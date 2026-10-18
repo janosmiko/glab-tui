@@ -15,7 +15,7 @@ use crate::ui::list_tab::{
     ListNavigation, ListTab, ViewInputs, column_labels, default_column_labels,
 };
 use crate::utils::format::{expand_tabs, strip_ansi_escapes};
-use crate::utils::ui::StatefulTable;
+use crate::utils::ui::{StatefulTable, step_clamped};
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use ratatui::layout::Rect;
@@ -652,6 +652,15 @@ impl Selector {
             .into_iter()
             .map(|(item, _)| item)
             .collect()
+    }
+
+    pub fn move_by(&mut self, down: bool, rows: usize) {
+        let len = self.get_filtered_items().len();
+        if len == 0 {
+            return;
+        }
+        self.cursor_idx = step_clamped(self.cursor_idx, len, down, rows);
+        self.state.select(Some(self.cursor_idx));
     }
 
     fn single_choice(
@@ -1963,6 +1972,39 @@ impl DiffView {
         if !self.search_query.is_empty() {
             let query = self.search_query.clone();
             self.search(&query);
+        }
+    }
+
+    /// Moves the file-tree selection or the diff cursor `rows` down or up,
+    /// stopping at the ends.
+    pub fn move_by(&mut self, down: bool, rows: usize, extend_selection: bool) {
+        if self.focus_on_files {
+            if self.visible_nodes.is_empty() {
+                return;
+            }
+            let old_idx = self.selected_visible_idx;
+            self.selected_visible_idx = step_clamped(old_idx, self.visible_nodes.len(), down, rows);
+            if self.selected_visible_idx != old_idx {
+                self.cursor_idx = 0;
+                self.scroll_offset = 0;
+                self.file_tree_scroll_offset = 0;
+                self.update_active_lines();
+            }
+        } else {
+            let len = if self.side_by_side {
+                self.side_by_side_lines.len()
+            } else {
+                self.lines.len()
+            };
+            if len == 0 {
+                return;
+            }
+            let new_idx = step_clamped(self.cursor_idx, len, down, rows);
+            if extend_selection {
+                self.selection_end = Some(new_idx);
+            }
+            self.cursor_idx = new_idx;
+            self.update_selected_file_from_cursor();
         }
     }
 
@@ -9116,6 +9158,36 @@ diff --git a/Makefile b/Makefile
     }
 
     #[test]
+    fn selector_move_by_clamps_to_the_filtered_items() {
+        let mut selector = Selector {
+            title: "Labels".to_string(),
+            all_items: (0..20).map(|i| format!("label-{i}")).collect(),
+            selected_items: std::collections::HashSet::new(),
+            cursor_idx: 0,
+            search_query: String::new(),
+            is_filtering: false,
+            is_loading: false,
+            entity_iid: 1,
+            entity_type: "issue".to_string(),
+            field_type: "labels".to_string(),
+            multi_select: true,
+            state: ListState::default(),
+        };
+
+        selector.move_by(true, 15);
+        assert_eq!(
+            (selector.cursor_idx, selector.state.selected()),
+            (15, Some(15))
+        );
+        selector.move_by(true, 15);
+        assert_eq!(selector.cursor_idx, 19, "stops on the last item");
+        selector.move_by(false, 15);
+        assert_eq!(selector.cursor_idx, 4);
+        selector.move_by(false, 15);
+        assert_eq!(selector.cursor_idx, 0, "stops on the first item");
+    }
+
+    #[test]
     fn test_selector_fuzzy_matching() {
         let selector = Selector {
             title: "Labels".to_string(),
@@ -9411,6 +9483,43 @@ index abcdef..ffffff 100644
             .visible_nodes
             .iter()
             .any(|n| n.file_path.as_deref() == Some(path))
+    }
+
+    #[test]
+    fn diff_move_by_clamps_and_extends_the_selection() {
+        let mut diff_view = DiffView::new(42, "owner/repo".to_string(), TWO_FILE_DIFF.to_string());
+        diff_view.focus_on_files = false;
+        let last = diff_view.lines.len() - 1;
+
+        diff_view.move_by(true, 3, false);
+        assert_eq!(diff_view.cursor_idx, 3);
+        assert_eq!(diff_view.selection_end, None);
+
+        diff_view.move_by(true, usize::MAX, true);
+        assert_eq!(diff_view.cursor_idx, last);
+        assert_eq!(diff_view.selection_end, Some(last));
+        assert_eq!(selected_tree_file(&diff_view), Some("src/main.rs"));
+
+        diff_view.move_by(false, usize::MAX, false);
+        assert_eq!(diff_view.cursor_idx, 0);
+    }
+
+    #[test]
+    fn diff_move_by_with_file_focus_moves_the_tree_selection() {
+        let mut diff_view = DiffView::new(42, "owner/repo".to_string(), TWO_FILE_DIFF.to_string());
+        diff_view.focus_on_files = true;
+        let last = diff_view.visible_nodes.len() - 1;
+        diff_view.cursor_idx = 2;
+
+        diff_view.move_by(true, usize::MAX, false);
+        assert_eq!(diff_view.selected_visible_idx, last);
+        assert_eq!(
+            diff_view.cursor_idx, 0,
+            "a new file starts at its first line"
+        );
+
+        diff_view.move_by(false, usize::MAX, false);
+        assert_eq!(diff_view.selected_visible_idx, 0);
     }
 
     #[test]

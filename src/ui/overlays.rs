@@ -1288,7 +1288,7 @@ pub(crate) fn render_help(f: &mut Frame, app: &mut App, size: Rect) {
                 app.config.keybindings.global.scroll_half_page_down,
                 app.config.keybindings.global.scroll_half_page_up
             )),
-            action: "Scroll description pane by half a page",
+            action: "Scroll description pane (or the list when it is hidden) by half a page",
         },
         Shortcut {
             category: "Global & Nav",

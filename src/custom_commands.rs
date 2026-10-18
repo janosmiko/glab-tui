@@ -160,7 +160,7 @@ fn builtin_action(config: &Config, tab: Tab, event: &KeyEvent) -> Option<String>
 
 /// The built-in action that takes `event` in the diff view before any custom
 /// binding. The diff view matches plain key codes regardless of modifiers,
-/// so `Ctrl+d` is taken by `d` just like `d` itself.
+/// so `Ctrl` plus a diff-view key is taken just like the plain key.
 fn diff_view_action(config: &Config, event: &KeyEvent) -> Option<String> {
     use crossterm::event::{KeyCode, KeyModifiers};
     let global = &config.keybindings.global;
@@ -169,6 +169,8 @@ fn diff_view_action(config: &Config, event: &KeyEvent) -> Option<String> {
         ("help", &global.help),
         ("refresh", &global.refresh),
         ("switch_repo", &global.switch_repo),
+        ("scroll_half_page_down", &global.scroll_half_page_down),
+        ("scroll_half_page_up", &global.scroll_half_page_up),
     ] {
         if keybinding_matches(binding, event) {
             return Some(format!("keybindings.global.{field}"));
@@ -1032,7 +1034,7 @@ command = "nvim {{.FilePath}}"
 key = "d"
 command = "true"
 [[diff]]
-key = "Ctrl+d"
+key = "Alt+d"
 command = "true"
 [[diff]]
 key = "Ctrl+o"
@@ -1056,6 +1058,19 @@ command = "true"
                 .collect::<Vec<_>>(),
             vec!["Ctrl+o"]
         );
+    }
+
+    #[test]
+    fn diff_binding_on_a_half_page_key_is_dropped() {
+        let config = config_with("[[diff]]\nkey = \"Ctrl+u\"\ncommand = \"true\"\n");
+        let (commands, problems) = CustomCommands::load(&config);
+
+        let reasons: Vec<&str> = problems.iter().map(|p| p.problem.as_str()).collect();
+        assert_eq!(
+            reasons,
+            vec!["never runs: keybindings.global.scroll_half_page_up takes the key first"]
+        );
+        assert_eq!(commands.in_diff().count(), 0);
     }
 
     #[test]

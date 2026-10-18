@@ -12,6 +12,8 @@ use event::{Event, EventHandler};
 use ratatui::{Terminal, backend::CrosstermBackend, widgets::ListState};
 use std::io;
 
+const SELECTOR_HALF_PAGE_ROWS: usize = 5;
+
 fn parse_key_value_pairs(input: &str) -> Vec<(String, String)> {
     let mut pairs = Vec::new();
     let mut current = String::new();
@@ -2715,6 +2717,24 @@ async fn main() -> Result<()> {
                                         }
                                         selector.state.select(Some(selector.cursor_idx));
                                     }
+                                    app.selector = Some(selector);
+                                }
+                                // The selector does not store its list height, so a
+                                // half page is a fixed number of rows.
+                                _ if keybinding_matches(
+                                    &app.config.keybindings.global.scroll_half_page_down,
+                                    &key_event,
+                                ) =>
+                                {
+                                    selector.move_by(true, SELECTOR_HALF_PAGE_ROWS);
+                                    app.selector = Some(selector);
+                                }
+                                _ if keybinding_matches(
+                                    &app.config.keybindings.global.scroll_half_page_up,
+                                    &key_event,
+                                ) =>
+                                {
+                                    selector.move_by(false, SELECTOR_HALF_PAGE_ROWS);
                                     app.selector = Some(selector);
                                 }
                                 KeyCode::Char(' ') => {
@@ -6819,6 +6839,25 @@ async fn main() -> Result<()> {
                                 app.diff_view = Some(diff_view);
                                 continue;
                             }
+                            // Ahead of the plain `d` arm, which ignores modifiers.
+                            _ if keybinding_matches(
+                                &app.config.keybindings.global.scroll_half_page_down,
+                                &key_event,
+                            ) =>
+                            {
+                                let rows = (diff_view.viewport_height / 2).max(1);
+                                diff_view.move_by(true, rows, in_selection);
+                                app.diff_view = Some(diff_view);
+                            }
+                            _ if keybinding_matches(
+                                &app.config.keybindings.global.scroll_half_page_up,
+                                &key_event,
+                            ) =>
+                            {
+                                let rows = (diff_view.viewport_height / 2).max(1);
+                                diff_view.move_by(false, rows, in_selection);
+                                app.diff_view = Some(diff_view);
+                            }
                             KeyCode::Char('q') => {
                                 if in_selection {
                                     diff_view.selection_start = None;
@@ -7099,66 +7138,11 @@ async fn main() -> Result<()> {
                                 app.diff_view = Some(diff_view);
                             }
                             KeyCode::Char('J') => {
-                                if diff_view.focus_on_files {
-                                    if !diff_view.visible_nodes.is_empty() {
-                                        let scroll_amount = 10;
-                                        let old_idx = diff_view.selected_visible_idx;
-                                        diff_view.selected_visible_idx =
-                                            (diff_view.selected_visible_idx + scroll_amount)
-                                                .min(diff_view.visible_nodes.len() - 1);
-                                        if diff_view.selected_visible_idx != old_idx {
-                                            diff_view.cursor_idx = 0;
-                                            diff_view.scroll_offset = 0;
-                                            diff_view.file_tree_scroll_offset = 0;
-                                            diff_view.update_active_lines();
-                                        }
-                                    }
-                                } else {
-                                    let active_len = if diff_view.side_by_side {
-                                        diff_view.side_by_side_lines.len()
-                                    } else {
-                                        diff_view.lines.len()
-                                    };
-                                    if active_len > 0 {
-                                        let scroll_amount = 10;
-                                        let new_idx = (diff_view.cursor_idx + scroll_amount)
-                                            .min(active_len - 1);
-                                        if in_selection && !diff_view.focus_on_files {
-                                            diff_view.selection_end = Some(new_idx);
-                                        }
-                                        diff_view.cursor_idx = new_idx;
-                                        if !diff_view.focus_on_files {
-                                            diff_view.update_selected_file_from_cursor();
-                                        }
-                                    }
-                                }
+                                diff_view.move_by(true, 10, in_selection);
                                 app.diff_view = Some(diff_view);
                             }
                             KeyCode::Char('K') => {
-                                if diff_view.focus_on_files {
-                                    let scroll_amount = 10;
-                                    let old_idx = diff_view.selected_visible_idx;
-                                    diff_view.selected_visible_idx = diff_view
-                                        .selected_visible_idx
-                                        .saturating_sub(scroll_amount);
-                                    if diff_view.selected_visible_idx != old_idx {
-                                        diff_view.cursor_idx = 0;
-                                        diff_view.scroll_offset = 0;
-                                        diff_view.file_tree_scroll_offset = 0;
-                                        diff_view.update_active_lines();
-                                    }
-                                } else {
-                                    let scroll_amount = 10;
-                                    let new_idx =
-                                        diff_view.cursor_idx.saturating_sub(scroll_amount);
-                                    if in_selection && !diff_view.focus_on_files {
-                                        diff_view.selection_end = Some(new_idx);
-                                    }
-                                    diff_view.cursor_idx = new_idx;
-                                    if !diff_view.focus_on_files {
-                                        diff_view.update_selected_file_from_cursor();
-                                    }
-                                }
+                                diff_view.move_by(false, 10, in_selection);
                                 app.diff_view = Some(diff_view);
                             }
                             KeyCode::Char('/') | KeyCode::Char('f') => {

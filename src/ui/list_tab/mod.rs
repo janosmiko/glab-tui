@@ -410,6 +410,8 @@ pub trait ListNavigation {
     fn select_visible_row(&mut self, row: usize);
     /// Move one row without wrapping.
     fn step(&mut self, down: bool);
+    /// Move `rows` rows without wrapping.
+    fn move_by(&mut self, down: bool, rows: usize);
     fn distinct_filter_values(&self, column: &str) -> Vec<String>;
 }
 
@@ -463,6 +465,19 @@ impl<C: ColumnDef> ListNavigation for ListTab<C> {
         } else {
             pos.saturating_sub(1)
         };
+        self.move_cursor_to(pos);
+    }
+
+    fn move_by(&mut self, down: bool, rows: usize) {
+        if self.view.is_empty() {
+            return;
+        }
+        let pos = crate::utils::ui::step_clamped(
+            self.cursor_pos.unwrap_or(0),
+            self.view.len(),
+            down,
+            rows,
+        );
         self.move_cursor_to(pos);
     }
 

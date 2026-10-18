@@ -737,6 +737,20 @@ pub fn handle_help_overlay(app: &mut App, key_event: &KeyEvent) -> bool {
                 app.help_search_query.pop();
                 reset_help_selection(app);
             }
+            _ if keybinding_matches(
+                &app.config.keybindings.global.scroll_half_page_down,
+                key_event,
+            ) =>
+            {
+                move_help_selection(app, true, HELP_PAGE_ROWS / 2)
+            }
+            _ if keybinding_matches(
+                &app.config.keybindings.global.scroll_half_page_up,
+                key_event,
+            ) =>
+            {
+                move_help_selection(app, false, HELP_PAGE_ROWS / 2)
+            }
             KeyCode::Char(c) => {
                 app.help_search_query.push(c);
                 reset_help_selection(app);
@@ -995,6 +1009,21 @@ pub fn handle_review_threads(app: &mut App, key_event: &KeyEvent) -> bool {
     let mut keep_open = true;
     match key_event.code {
         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('T') => keep_open = false,
+        // Ahead of the plain `u` arm, which ignores modifiers.
+        _ if keybinding_matches(
+            &app.config.keybindings.global.scroll_half_page_down,
+            key_event,
+        ) =>
+        {
+            move_review_threads_half_page(&mut overview, true)
+        }
+        _ if keybinding_matches(
+            &app.config.keybindings.global.scroll_half_page_up,
+            key_event,
+        ) =>
+        {
+            move_review_threads_half_page(&mut overview, false)
+        }
         KeyCode::Char('j') | KeyCode::Down => overview.next(),
         KeyCode::Char('k') | KeyCode::Up => overview.previous(),
         KeyCode::Char('g') | KeyCode::Home => overview.first(),
@@ -1010,6 +1039,19 @@ pub fn handle_review_threads(app: &mut App, key_event: &KeyEvent) -> bool {
         app.review_threads = Some(overview);
     }
     true
+}
+
+fn move_review_threads_half_page(overview: &mut crate::app::ReviewThreadsOverview, down: bool) {
+    let rows = overview
+        .list_rect
+        .map_or(1, |rect| (rect.height / 2).max(1) as usize);
+    let count = overview.visible_threads().count();
+    overview.select(crate::utils::ui::step_clamped(
+        overview.cursor_idx,
+        count,
+        down,
+        rows,
+    ));
 }
 
 /// Moves the diff cursor onto the selected thread's anchor. Returns whether
@@ -1076,6 +1118,20 @@ mod tests {
         SubmitDialog,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    #[test]
+    fn help_ctrl_d_u_move_half_a_page_without_typing_into_the_search() {
+        let mut app = App::default();
+        app.show_help = true;
+        let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+
+        handle_help_overlay(&mut app, &ctrl('d'));
+        handle_help_overlay(&mut app, &ctrl('d'));
+        assert_eq!(app.help_selected, 10);
+        handle_help_overlay(&mut app, &ctrl('u'));
+        assert_eq!(app.help_selected, 5);
+        assert!(app.help_search_query.is_empty());
+    }
 
     #[test]
     fn help_arrows_move_the_selection_and_typing_filters_from_the_top() {
@@ -1330,6 +1386,28 @@ diff --git a/src/lib.rs b/src/lib.rs
             .as_ref()
             .and_then(|o| o.selected_thread())
             .map(|t| t.root().id)
+    }
+
+    #[test]
+    fn review_threads_ctrl_d_u_move_half_the_list_without_toggling_the_filter() {
+        let mut app = app_with_review_threads(
+            (1..=6)
+                .map(|id| review_note(id, &format!("t{id}"), None))
+                .collect(),
+        );
+        // 4 visible rows, so half a page is 2.
+        app.review_threads.as_mut().unwrap().list_rect =
+            Some(ratatui::layout::Rect::new(0, 0, 40, 4));
+        let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+
+        handle_review_threads(&mut app, &ctrl('d'));
+        assert_eq!(selected_root_id(&app), Some(3));
+        handle_review_threads(&mut app, &ctrl('d'));
+        handle_review_threads(&mut app, &ctrl('d'));
+        assert_eq!(selected_root_id(&app), Some(6), "stops on the last thread");
+        handle_review_threads(&mut app, &ctrl('u'));
+        assert_eq!(selected_root_id(&app), Some(4));
+        assert!(!app.review_threads.as_ref().unwrap().unresolved_only);
     }
 
     #[test]

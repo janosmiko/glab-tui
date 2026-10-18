@@ -427,6 +427,76 @@ fn apply_page_scroll(app: &mut App, pending: Option<char>, key_event: &KeyEvent)
     false
 }
 
+/// Moves the list selection by half a page for the half-page bindings while
+/// the detail pane is hidden. A visible pane takes these keys first (see
+/// `apply_page_scroll`). Returns true if a binding matched.
+fn apply_list_half_page(app: &mut App, key_event: &KeyEvent, tx: &UnboundedSender<Event>) -> bool {
+    if app.detail_visible || app.details_zoomed {
+        return false;
+    }
+    let down = if keybinding_matches(
+        &app.config.keybindings.global.scroll_half_page_down,
+        key_event,
+    ) {
+        true
+    } else if keybinding_matches(
+        &app.config.keybindings.global.scroll_half_page_up,
+        key_event,
+    ) {
+        false
+    } else {
+        return false;
+    };
+    let Some(rect) = app.content_rect else {
+        return false;
+    };
+    // The table loses four rows to its borders, header and header gap.
+    let rows = (rect.height.saturating_sub(4) / 2).max(1) as usize;
+    if let Some(list) = app.list_navigation_mut(app.active_tab) {
+        list.move_by(down, rows);
+    } else {
+        match app.active_tab {
+            crate::app::Tab::Issues => app.issues.move_by(app.filtered_issues().len(), down, rows),
+            crate::app::Tab::MergeRequests => app.mrs.move_by(app.filtered_mrs().len(), down, rows),
+            crate::app::Tab::Pipelines => {
+                app.pipelines
+                    .move_by(app.filtered_pipelines().len(), down, rows)
+            }
+            crate::app::Tab::Jobs => {
+                let len = app.filtered_jobs().len();
+                app.jobs.move_by(len, down, rows);
+                app.job_trace = None;
+                app.job_trace_follow = false;
+            }
+            crate::app::Tab::Todos => app.todos.move_by(app.filtered_todos().len(), down, rows),
+            crate::app::Tab::Milestones => {
+                app.milestones
+                    .move_by(app.filtered_milestones().len(), down, rows)
+            }
+            // The terminal log counts its scroll up from the newest line.
+            crate::app::Tab::Terminal => {
+                app.terminal_scroll = if down {
+                    app.terminal_scroll.saturating_sub(rows)
+                } else {
+                    app.terminal_scroll.saturating_add(rows)
+                };
+            }
+            _ => {}
+        }
+    }
+    app.detail_scroll = 0;
+    if app.select_mode {
+        app.update_visual_selection();
+    }
+    if app.active_tab == crate::app::Tab::Issues {
+        maybe_fetch_related_mrs(app, tx);
+    }
+    if app.active_tab == crate::app::Tab::MergeRequests {
+        maybe_fetch_mr_related_issues(app, tx);
+    }
+    true
+}
+
 pub async fn handle_active_tab_key(
     app: &mut App,
     key_event: &KeyEvent,
@@ -2491,7 +2561,9 @@ pub async fn handle_active_tab_key(
             // `scroll_top` jumps to the first line directly: 0 is a known
             // index, no flag round-trip needed.
             app.detail_scroll = 0;
-        } else if !apply_page_scroll(app, None, key_event) {
+        } else if !apply_page_scroll(app, None, key_event)
+            && !apply_list_half_page(app, key_event, &tx)
+        {
             detail_scrolled = false;
         }
 
@@ -4060,6 +4132,72 @@ mod tests {
         )
         .await;
         assert_eq!(app.error_message, None);
+    }
+
+    fn app_with_branches(count: usize) -> App {
+        let mut app = App::default();
+        app.active_tab = crate::app::Tab::Branches;
+        app.branches.set_items(
+            (0..count)
+                .map(|i| crate::domain::branches::Branch {
+                    name: format!("branch-{i:02}"),
+                    default: false,
+                    protected: false,
+                    web_url: String::new(),
+                    can_push: false,
+                    commit_sha: String::new(),
+                })
+                .collect(),
+        );
+        app.sync_list_views();
+        // 4 rows of table chrome leave 20 data rows, so half a page is 10.
+        app.content_rect = Some(ratatui::layout::Rect::new(0, 0, 80, 24));
+        app
+    }
+
+    /// With the detail pane hidden, `Ctrl+d`/`Ctrl+u` move the list
+    /// selection by half the table rows and stop at both ends.
+    #[tokio::test]
+    async fn ctrl_d_u_move_the_list_by_half_a_page_when_detail_is_hidden() {
+        let mut app = app_with_branches(25);
+        app.detail_visible = false;
+        let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+
+        dispatch(&mut app, &ctrl('d')).await;
+        assert_eq!(app.selected_branch_name().as_deref(), Some("branch-10"));
+        dispatch(&mut app, &ctrl('d')).await;
+        dispatch(&mut app, &ctrl('d')).await;
+        assert_eq!(
+            app.selected_branch_name().as_deref(),
+            Some("branch-24"),
+            "stops on the last row"
+        );
+        dispatch(&mut app, &ctrl('u')).await;
+        assert_eq!(app.selected_branch_name().as_deref(), Some("branch-14"));
+        dispatch(&mut app, &ctrl('u')).await;
+        dispatch(&mut app, &ctrl('u')).await;
+        assert_eq!(
+            app.selected_branch_name().as_deref(),
+            Some("branch-00"),
+            "stops on the first row"
+        );
+    }
+
+    /// While the detail pane shows, `Ctrl+d` keeps scrolling the pane and
+    /// leaves the list selection alone.
+    #[tokio::test]
+    async fn ctrl_d_scrolls_the_visible_detail_pane_not_the_list() {
+        let mut app = app_with_branches(25);
+        app.detail_visible = true;
+        app.detail_rect = Some(ratatui::layout::Rect::new(0, 0, 40, 22));
+
+        dispatch(
+            &mut app,
+            &KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL),
+        )
+        .await;
+        assert_eq!(app.selected_branch_name().as_deref(), Some("branch-00"));
+        assert_eq!(app.detail_scroll, 10);
     }
 
     #[tokio::test]
