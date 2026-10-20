@@ -5585,6 +5585,12 @@ impl App {
         }
     }
 
+    /// The tab's sort column and whether it is ascending.
+    pub fn sort_for(&self, tab: Tab) -> Option<(&str, bool)> {
+        let col = self.group_by_column.get(&tab)?.as_deref()?;
+        Some((col, self.group_ascending.get(&tab).copied().unwrap_or(true)))
+    }
+
     /// Moves the active tab's sort to the next (or previous) visible column.
     /// "Unsorted" sits between the last and the first column.
     pub fn cycle_sort_column(&mut self, forward: bool) {

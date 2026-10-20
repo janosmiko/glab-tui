@@ -23,6 +23,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Cell, Row as TableRow, Table, TableState};
 
 use crate::config::{Icons, Theme};
+use crate::ui::helpers::sort_header_label;
 
 /// A row with a natural key that survives refreshes, sorts and filters.
 pub trait Row {
@@ -307,11 +308,15 @@ impl<C: ColumnDef> ListTab<C> {
                 .style(row_style)
                 .height(1)
         });
-        let header = TableRow::new(
-            columns
-                .iter()
-                .map(|col| Cell::from(Line::from(col.label()).alignment(col.header_alignment()))),
-        )
+        let sort = self
+            .spec
+            .as_ref()
+            .and_then(|spec| spec.sort.as_ref())
+            .map(|(col, ascending)| (col.as_str(), *ascending));
+        let header = TableRow::new(columns.iter().map(|col| {
+            let label = sort_header_label(col.label(), sort, table.icons);
+            Cell::from(Line::from(label).alignment(col.header_alignment()))
+        }))
         .style(table.header_style)
         .height(1);
         let mut widths: Vec<Constraint> = columns.iter().map(|col| col.width()).collect();
