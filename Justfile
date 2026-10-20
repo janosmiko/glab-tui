@@ -8,6 +8,10 @@ default:
 build:
     cargo build --release
 
+# Run a debug build, passing arguments to glab-tui (e.g. just run -r owner/repo)
+run *args:
+    cargo run -- {{args}}
+
 # Build, then copy the binary to the first directory in PATH
 install: build
     @dest="${PATH%%:*}"; cp target/release/glab-tui "$dest/" && echo "Installed glab-tui to $dest"
