@@ -1044,6 +1044,12 @@ pub struct KeybindingGlobal {
     pub jump_to_id: String,
     #[serde(default = "def_submit_edit")]
     pub submit_edit: String,
+    #[serde(default = "def_sort_next")]
+    pub sort_next: String,
+    #[serde(default = "def_sort_prev")]
+    pub sort_prev: String,
+    #[serde(default = "def_sort_reverse")]
+    pub sort_reverse: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1481,6 +1487,9 @@ keybind_defaults! {
     def_drill_into_scope = "G",
     def_switch_repo = "Ctrl+s",
     def_jump_to_id = "g",
+    def_sort_next = ">",
+    def_sort_prev = "<",
+    def_sort_reverse = "=",
     def_submit_edit = "Ctrl+x",
     def_copy_branch = "y",
     def_retry_failed = "R",
@@ -1512,6 +1521,9 @@ impl Default for KeybindingGlobal {
             switch_repo: def_switch_repo(),
             jump_to_id: def_jump_to_id(),
             submit_edit: def_submit_edit(),
+            sort_next: def_sort_next(),
+            sort_prev: def_sort_prev(),
+            sort_reverse: def_sort_reverse(),
         }
     }
 }
@@ -1953,6 +1965,9 @@ scroll_half_page_up = "Ctrl+u"
 scroll_to_end = "End"
 scroll_top = "Home"
 jump_to_id = "g"
+sort_next = ">"
+sort_prev = "<"
+sort_reverse = "="
 
 [keybindings.issues]
 create_issue = "n"

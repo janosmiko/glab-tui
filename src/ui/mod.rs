@@ -274,7 +274,16 @@ pub fn render(f: &mut Frame, app: &mut App) {
     ];
     if let Some(Some(group_col)) = app.group_by_column.get(&app.active_tab) {
         title_spans.push(Span::styled(
-            format!(" {} GROUPED: {} ", icons.label_filtered, group_col),
+            format!(
+                " {} GROUPED: {} {} ",
+                icons.label_filtered,
+                group_col,
+                if app.group_ascending.get(&app.active_tab) == Some(&false) {
+                    "desc"
+                } else {
+                    "asc"
+                }
+            ),
             Style::default()
                 .bg(THEME.read().unwrap().blue)
                 .fg(THEME.read().unwrap().highlight_bg)
