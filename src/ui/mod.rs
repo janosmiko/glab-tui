@@ -272,17 +272,13 @@ pub fn render(f: &mut Frame, app: &mut App) {
                 .add_modifier(Modifier::BOLD),
         ),
     ];
-    if let Some(Some(group_col)) = app.group_by_column.get(&app.active_tab) {
+    if let Some((group_col, ascending)) = app.sort_for(app.active_tab) {
         title_spans.push(Span::styled(
             format!(
                 " {} GROUPED: {} {} ",
                 icons.label_filtered,
                 group_col,
-                if app.group_ascending.get(&app.active_tab) == Some(&false) {
-                    "desc"
-                } else {
-                    "asc"
-                }
+                if ascending { "asc" } else { "desc" }
             ),
             Style::default()
                 .bg(THEME.read().unwrap().blue)

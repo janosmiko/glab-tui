@@ -931,6 +931,8 @@ pub(crate) fn sort_header_label(label: &str, sort: Option<(&str, bool)>, icons: 
 mod tests {
     use super::*;
     use crate::domain::pipelines::Job;
+    use crate::ui::diff::count_wrapped_lines;
+    use crate::ui::diff::{CommentAnchor, format_comment_with_suggestions};
 
     #[test]
     fn sort_header_label_marks_only_the_sorted_column() {
@@ -949,8 +951,6 @@ mod tests {
         );
         assert_eq!(sort_header_label("Title", None, &icons), "Title");
     }
-    use crate::ui::diff::count_wrapped_lines;
-    use crate::ui::diff::{CommentAnchor, format_comment_with_suggestions};
 
     fn make_job(id: u64, stage: &str, name: &str, status: &str) -> Job {
         Job {

@@ -5624,13 +5624,7 @@ impl App {
     /// Does nothing while the tab is unsorted: the flip would be invisible
     /// and surprise the user on the next `cycle_sort_column`.
     pub fn reverse_sort_order(&mut self) {
-        if self
-            .group_by_column
-            .get(&self.active_tab)
-            .cloned()
-            .flatten()
-            .is_none()
-        {
+        if self.sort_for(self.active_tab).is_none() {
             return;
         }
         let ascending = self.group_ascending.entry(self.active_tab).or_insert(true);
